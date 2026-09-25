@@ -111,6 +111,18 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if item.Expiration > 0 && time.Now().UnixNano() > item.Expiration {
+		mu.Lock()
+		if cur, ok := db[key]; ok && cur.Expiration > 0 && time.Now().UnixNano() > cur.Expiration {
+			delete(db, key)
+			writeTransaction(Transaction{Action: "delete", Key: key})
+		}
+		mu.Unlock()
+
+		http.Error(w, "key not found", http.StatusNotFound)
+		return
+	}
+
 	fmt.Println(key)
 	fmt.Println("Requested Key Sent")
 	json.NewEncoder(w).Encode(item.Value)
