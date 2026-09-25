@@ -23,9 +23,10 @@ type Transaction struct {
 }
 
 var (
-	db            = make(map[string]Item)
-	mu            sync.RWMutex
-	once          sync.Once
+	db             = make(map[string]Item)
+	mu             sync.RWMutex
+	logMu          sync.Mutex
+	once           sync.Once
 	transactionLog *os.File
 )
 
@@ -80,8 +81,8 @@ func loadFromLog() {
 }
 
 func writeTransaction(tx Transaction) {
-	mu.Lock()
-	defer mu.Unlock()
+	logMu.Lock()
+	defer logMu.Unlock()
 
 	data, err := json.Marshal(tx)
 	if err != nil {
@@ -166,13 +167,20 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 
 func janitor() {
 	for range time.Tick(1 * time.Second) {
+		var expired []string
+		now := time.Now().UnixNano()
+
 		mu.Lock()
 		for key, item := range db {
-			if item.Expiration > 0 && time.Now().UnixNano() > item.Expiration {
+			if item.Expiration > 0 && now > item.Expiration {
 				delete(db, key)
-				writeTransaction(Transaction{Action: "delete", Key: key})
+				expired = append(expired, key)
 			}
 		}
 		mu.Unlock()
+
+		for _, key := range expired {
+			writeTransaction(Transaction{Action: "delete", Key: key})
+		}
 	}
 }
