@@ -348,3 +348,87 @@ func TestStore_Concurrency(t *testing.T) {
 
 	wg.Wait()
 }
+
+func newBenchmarkStore(b *testing.B, maxKeys int) *Store {
+	b.Helper()
+	dir := b.TempDir()
+	logPath := filepath.Join(dir, "bench_transaction.log")
+	store, err := NewStore(logPath, maxKeys)
+	if err != nil {
+		b.Fatalf("failed to create bench store: %v", err)
+	}
+	b.Cleanup(func() {
+		_ = store.Close()
+	})
+	return store
+}
+
+func BenchmarkStore_Set(b *testing.B) {
+	store := newBenchmarkStore(b, 0)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = store.Set("bench_key", "bench_value", 300, 1)
+	}
+}
+
+func BenchmarkStore_Get(b *testing.B) {
+	store := newBenchmarkStore(b, 0)
+	_ = store.Set("bench_key", "bench_value", 300, 1)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = store.Get("bench_key")
+	}
+}
+
+func BenchmarkStore_ParallelGet(b *testing.B) {
+	store := newBenchmarkStore(b, 0)
+	_ = store.Set("bench_key", "bench_value", 300, 1)
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, _ = store.Get("bench_key")
+		}
+	})
+}
+
+func BenchmarkStore_ParallelSet(b *testing.B) {
+	store := newBenchmarkStore(b, 0)
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			key := fmt.Sprintf("pk_%d", i%1000)
+			_ = store.Set(key, "parallel_val", 300, 1)
+			i++
+		}
+	})
+}
+
+func BenchmarkHTTP_Get(b *testing.B) {
+	store := newBenchmarkStore(b, 0)
+	_ = store.Set("bench_key", "bench_value", 300, 1)
+	server := NewServer(store)
+	router := server.Routes()
+	req := httptest.NewRequest("GET", "/keys/bench_key", nil)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+	}
+}
+
+func BenchmarkHTTP_Set(b *testing.B) {
+	store := newBenchmarkStore(b, 0)
+	server := NewServer(store)
+	router := server.Routes()
+	payload := []byte(`{"key":"bench_key","value":"bench_value","ttl":300,"priority":1}`)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		req := httptest.NewRequest("POST", "/keys", bytes.NewReader(payload))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+	}
+}

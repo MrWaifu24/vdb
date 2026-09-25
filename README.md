@@ -44,10 +44,14 @@ go run main.go -port 6969 -log transaction.log -max-keys 10000 -cleanup 1s
 | `-max-keys` | `0` | Max in-memory keys (0 for unlimited; lowest priority evicted when full) |
 | `-cleanup` | `1s` | Background janitor cleanup interval |
 
-### Running Tests
+### Running Tests & Benchmarks
 
 ```bash
+# Run unit & integration tests with race detection
 go test -v -race ./...
+
+# Run performance benchmarks
+go test -bench=. -benchmem -run=^$ ./...
 ```
 
 ---
@@ -172,6 +176,32 @@ VoidDB maintains backward compatibility with earlier versions:
 | `/get?key={key}` | `GET` | Returns stored value directly as JSON |
 | `/set` | `POST` | Accepts JSON body `{key, value, ttl, priority}` |
 | `/delete?key={key}` | `DELETE` | Removes key and returns `204 No Content` |
+
+---
+
+## Benchmarks
+
+Benchmarked on Apple Silicon (8 cores, Go 1.24+):
+
+```bash
+go test -bench=. -benchmem -run=^$ ./...
+```
+
+### Store Operations (In-Memory Engine)
+
+| Benchmark | Throughput | Latency | Memory | Allocations | Description |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `Store.Get` | **~20.3M ops/sec** | **~49 ns/op** | 0 B/op | 0 allocs/op | Direct in-memory lookup with `RWMutex` |
+| `Store.ParallelGet` | **~4.6M ops/sec** | **~216 ns/op** | 0 B/op | 0 allocs/op | Highly concurrent multi-goroutine reads |
+| `Store.Set` | **~335K ops/sec** | **~2.98 µs/op** | 256 B/op | 4 allocs/op | Memory insert + JSON encoding + WAL disk write |
+| `Store.ParallelSet` | **~215K ops/sec** | **~4.64 µs/op** | 270 B/op | 5 allocs/op | Concurrent writes across worker goroutines |
+
+### HTTP Endpoints (Full HTTP Pipeline)
+
+| Endpoint | Throughput | Latency | Memory | Allocations | Description |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `GET /keys/{key}` | **~530K req/sec** | **~1.88 µs/op** | 1,689 B/op | 32 allocs/op | Full routing, lookup, and JSON serialization |
+| `POST /keys` | **~132K req/sec** | **~7.58 µs/op** | 7,798 B/op | 43 allocs/op | JSON decoding, store write, WAL append, response |
 
 ---
 
