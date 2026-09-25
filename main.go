@@ -38,8 +38,8 @@ func main() {
 	}
 	defer transactionLog.Close()
 
+	fmt.Println("Loading from previous state...")
 	loadFromLog()
-	fmt.Println("Loading from previous state...\n")
 
 	once.Do(func() {
 		go janitor()
@@ -63,6 +63,7 @@ func loadFromLog() {
 	}
 	defer file.Close()
 
+	now := time.Now().UnixNano()
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		var tx Transaction
@@ -73,6 +74,10 @@ func loadFromLog() {
 
 		switch tx.Action {
 		case "set":
+			if tx.Item.Expiration > 0 && now > tx.Item.Expiration {
+				delete(db, tx.Key)
+				continue
+			}
 			db[tx.Key] = tx.Item
 		case "delete":
 			delete(db, tx.Key)
