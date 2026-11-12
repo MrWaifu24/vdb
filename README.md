@@ -1,5 +1,7 @@
 # VoidDB
 
+<a href="https://www.namtao.com/0rwx/"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/ai-w-dark.svg"><img src=".github/ai-w-light.svg" alt="AI use: Level W (Write), with help from an AI co-writer" height="28"></picture></a>
+
 A lightweight, high-performance in-memory database written in Go with persistent transaction logging, TTL support, priority-based eviction, and a modern RESTful API.
 
 ## Features
